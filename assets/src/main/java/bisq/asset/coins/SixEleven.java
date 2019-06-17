@@ -17,12 +17,20 @@
 
 package bisq.asset.coins;
 
+import bisq.asset.Base58BitcoinAddressValidator;
 import bisq.asset.Coin;
-import bisq.asset.DefaultAddressValidator;
+import bisq.asset.NetworkParametersAdapter;
 
 public class SixEleven extends Coin {
 
     public SixEleven() {
-        super("SixEleven", "611", new DefaultAddressValidator());
+        super("SixEleven", "611", new Base58BitcoinAddressValidator(new SixElevenChainParams()));
+    }
+
+    public static class SixElevenChainParams extends NetworkParametersAdapter {
+        public SixElevenChainParams() {
+            addressHeader = 52;
+            acceptableAddressCodes = new int[]{addressHeader};
+        }
     }
 }
