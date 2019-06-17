@@ -137,6 +137,7 @@ public class CurrencyUtil {
         result.add(new CryptoCurrency("XMR", "Monero"));
         result.add(new CryptoCurrency("NMC", "Namecoin"));
         result.add(new CryptoCurrency("SF", "Siafund"));
+        result.add(new CryptoCurrency("611", "SixEleven"));
         result.add(new CryptoCurrency("ZEC", "Zcash"));
         result.sort(TradeCurrency::compareTo);
 
