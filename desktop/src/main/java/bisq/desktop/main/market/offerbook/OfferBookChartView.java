@@ -23,6 +23,7 @@ import bisq.desktop.common.view.FxmlView;
 import bisq.desktop.components.AutoTooltipButton;
 import bisq.desktop.components.AutoTooltipLabel;
 import bisq.desktop.components.AutoTooltipTableColumn;
+import bisq.desktop.components.AutocompleteComboBox;
 import bisq.desktop.components.ColoredDecimalPlacesWithZerosText;
 import bisq.desktop.components.PeerInfoIconSmall;
 import bisq.desktop.main.MainView;
@@ -37,7 +38,8 @@ import bisq.core.locale.CurrencyUtil;
 import bisq.core.locale.Res;
 import bisq.core.offer.Offer;
 import bisq.core.offer.OfferPayload;
-import bisq.core.util.BSFormatter;
+import bisq.core.util.FormattingUtils;
+import bisq.core.util.coin.CoinFormatter;
 
 import bisq.network.p2p.NodeAddress;
 
@@ -88,12 +90,10 @@ import javafx.util.Callback;
 import javafx.util.StringConverter;
 
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.Optional;
+import java.util.List;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
-import static bisq.desktop.util.FormBuilder.addTopLabelComboBox;
+import static bisq.desktop.util.FormBuilder.addTopLabelAutocompleteComboBox;
 import static bisq.desktop.util.Layout.INITIAL_WINDOW_HEIGHT;
 
 @FxmlView
@@ -101,14 +101,14 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
     private final boolean useDevPrivilegeKeys;
 
     private NumberAxis xAxis;
-    private XYChart.Series seriesBuy, seriesSell;
+    private XYChart.Series<Number, Number> seriesBuy, seriesSell;
     private final Navigation navigation;
-    private final BSFormatter formatter;
+    private final CoinFormatter formatter;
     private TableView<OfferListItem> buyOfferTableView;
     private TableView<OfferListItem> sellOfferTableView;
     private AreaChart<Number, Number> areaChart;
     private AnchorPane chartPane;
-    private ComboBox<CurrencyListItem> currencyComboBox;
+    private AutocompleteComboBox<CurrencyListItem> currencyComboBox;
     private Subscription tradeCurrencySubscriber;
     private final StringProperty volumeColumnLabel = new SimpleStringProperty();
     private final StringProperty priceColumnLabel = new SimpleStringProperty();
@@ -134,7 +134,7 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     @Inject
-    public OfferBookChartView(OfferBookChartViewModel model, Navigation navigation, BSFormatter formatter,
+    public OfferBookChartView(OfferBookChartViewModel model, Navigation navigation, @Named(FormattingUtils.BTC_FORMATTER_KEY) CoinFormatter formatter,
                               @Named(AppOptionKeys.USE_DEV_PRIVILEGE_KEYS) boolean useDevPrivilegeKeys) {
         super(model);
         this.navigation = navigation;
@@ -146,11 +146,8 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
     public void initialize() {
         createListener();
 
-        final Tuple3<VBox, Label, ComboBox<CurrencyListItem>> currencyComboBoxTuple = addTopLabelComboBox(Res.get("shared.currency"),
-                Res.get("list.currency.select"), 0);
+        final Tuple3<VBox, Label, AutocompleteComboBox<CurrencyListItem>> currencyComboBoxTuple = addTopLabelAutocompleteComboBox(Res.get("shared.currency"), 0);
         this.currencyComboBox = currencyComboBoxTuple.third;
-        this.currencyComboBox.setButtonCell(GUIUtil.getCurrencyListItemButtonCell(Res.get("shared.oneOffer"),
-                Res.get("shared.multipleOffers"), model.preferences));
         this.currencyComboBox.setCellFactory(GUIUtil.getCurrencyListItemCellFactory(Res.get("shared.oneOffer"),
                 Res.get("shared.multipleOffers"), model.preferences));
 
@@ -166,8 +163,8 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
         leftButton = (AutoTooltipButton) tupleBuy.third;
         rightButton = (AutoTooltipButton) tupleSell.third;
 
-        leftHeaderLabel = tupleBuy.forth;
-        rightHeaderLabel = tupleSell.forth;
+        leftHeaderLabel = tupleBuy.fourth;
+        rightHeaderLabel = tupleSell.fourth;
 
         bottomHBox = new HBox();
         bottomHBox.setSpacing(20); //30
@@ -191,13 +188,19 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
         model.setSelectedTabIndex(tabPaneSelectionModel.getSelectedIndex());
         tabPaneSelectionModel.selectedIndexProperty().addListener(selectedTabIndexListener);
 
-        currencyComboBox.setItems(model.getCurrencyListItems());
-        currencyComboBox.setVisibleRowCount(12);
+        currencyComboBox.setConverter(new CurrencyListItemStringConverter(currencyComboBox));
+        currencyComboBox.getEditor().getStyleClass().add("combo-box-editor-bold");
 
-        if (model.getSelectedCurrencyListItem().isPresent())
+        currencyComboBox.setAutocompleteItems(model.getCurrencyListItems());
+        currencyComboBox.setVisibleRowCount(10);
+
+        if (model.getSelectedCurrencyListItem().isPresent()) {
+            CurrencyListItem selectedItem = model.getSelectedCurrencyListItem().get();
             currencyComboBox.getSelectionModel().select(model.getSelectedCurrencyListItem().get());
+            currencyComboBox.getEditor().setText(new CurrencyListItemStringConverter(currencyComboBox).toString(selectedItem));
+        }
 
-        currencyComboBox.setOnAction(e -> {
+        currencyComboBox.setOnChangeConfirmed(e -> {
             CurrencyListItem selectedItem = currencyComboBox.getSelectionModel().getSelectedItem();
             if (selectedItem != null) {
                 model.onSetTradeCurrency(selectedItem.tradeCurrency);
@@ -219,15 +222,15 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
                         public String toString(Number object) {
                             final double doubleValue = (double) object;
                             if (CurrencyUtil.isCryptoCurrency(model.getCurrencyCode())) {
-                                final String withCryptoPrecision = formatter.formatRoundedDoubleWithPrecision(doubleValue, cryptoPrecision);
+                                final String withCryptoPrecision = FormattingUtils.formatRoundedDoubleWithPrecision(doubleValue, cryptoPrecision);
                                 if (withCryptoPrecision.equals("0.000")) {
                                     cryptoPrecision = 8;
-                                    return formatter.formatRoundedDoubleWithPrecision(doubleValue, cryptoPrecision);
+                                    return FormattingUtils.formatRoundedDoubleWithPrecision(doubleValue, cryptoPrecision);
                                 } else {
                                     return withCryptoPrecision;
                                 }
                             } else {
-                                return formatter.formatRoundedDoubleWithPrecision(doubleValue, 2);
+                                return FormattingUtils.formatRoundedDoubleWithPrecision(doubleValue, 2);
                             }
                         }
 
@@ -264,7 +267,7 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
 
                         priceColumnLabel.set(Res.get("shared.priceWithCur", code));
                     }
-                    xAxis.setLabel(formatter.getPriceWithCurrencyCode(code));
+                    xAxis.setLabel(CurrencyUtil.getPriceWithCurrencyCode(code));
 
                     seriesBuy.setName(leftHeaderLabel.getText() + "   ");
                     seriesSell.setName(rightHeaderLabel.getText());
@@ -279,6 +282,26 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
         root.getScene().heightProperty().addListener(bisqWindowVerticalSizeListener);
 
         updateChartData();
+    }
+
+    static class CurrencyListItemStringConverter extends StringConverter<CurrencyListItem> {
+        private ComboBox<CurrencyListItem> comboBox;
+
+        CurrencyListItemStringConverter(ComboBox<CurrencyListItem> comboBox) {
+            this.comboBox = comboBox;
+        }
+
+        @Override
+        public String toString(CurrencyListItem currencyItem) {
+            return currencyItem != null ? currencyItem.codeDashNameString() : "";
+        }
+
+        @Override
+        public CurrencyListItem fromString(String s) {
+            return comboBox.getItems().stream().
+                    filter(currencyItem -> currencyItem.codeDashNameString().equals(s)).
+                    findAny().orElse(null);
+        }
     }
 
     private void createListener() {
@@ -313,7 +336,6 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
         tabPaneSelectionModel.selectedIndexProperty().removeListener(selectedTabIndexListener);
         model.currencyListItems.getObservableList().removeListener(currencyListItemsListener);
         tradeCurrencySubscriber.unsubscribe();
-        currencyComboBox.setOnAction(null);
         buyOfferTableView.getSelectionModel().selectedItemProperty().removeListener(buyTableRowSelectionListener);
         sellOfferTableView.getSelectionModel().selectedItemProperty().removeListener(sellTableRowSelectionListener);
     }
@@ -346,7 +368,7 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
         areaChart.setPrefHeight(270);
         areaChart.setCreateSymbols(true);
         areaChart.setPadding(new Insets(0, 10, 0, 10));
-        areaChart.getData().addAll(seriesBuy, seriesSell);
+        areaChart.getData().addAll(List.of(seriesBuy, seriesSell));
 
         chartPane = new AnchorPane();
         chartPane.getStyleClass().add("chart-pane");
@@ -364,33 +386,32 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
         seriesSell.getData().clear();
         areaChart.getData().clear();
 
-        final Supplier<Optional<? extends XYChart.Data>> optionalMaxSupplier = () ->
-                Optional.of(new XYChart.Data<>(Double.MAX_VALUE, Double.MAX_VALUE));
+        double buyMinValue = model.getBuyData().stream()
+                .mapToDouble(o -> o.getXValue().doubleValue())
+                .min()
+                .orElse(Double.MAX_VALUE);
 
-        final Optional<XYChart.Data> buyMinOptional = model.getBuyData().stream()
-                .min(Comparator.comparingDouble(o -> (double) o.getXValue()))
-                .or(optionalMaxSupplier);
+        // Hide buy offers that are more than a factor 3 higher than the lowest buy offer
+        double buyMaxValue = model.getBuyData().stream()
+                .mapToDouble(o -> o.getXValue().doubleValue())
+                .filter(o -> o < buyMinValue * 3)
+                .max()
+                .orElse(Double.MIN_VALUE);
 
-        final Supplier<Optional<? extends XYChart.Data>> optionalMinSupplier = () ->
-                Optional.of(new XYChart.Data<>(Double.MIN_VALUE, Double.MIN_VALUE));
+        double sellMaxValue = model.getSellData().stream()
+                .mapToDouble(o -> o.getXValue().doubleValue())
+                .max()
+                .orElse(Double.MIN_VALUE);
 
-        // Hide buy offers that are more than a factor 5 higher than the lowest buy offer
-        final Optional<XYChart.Data> buyMaxOptional = model.getBuyData().stream()
-                .filter(o -> (double) o.getXValue() < (double) buyMinOptional.get().getXValue() * 3)
-                .max(Comparator.comparingDouble(o -> (double) o.getXValue()))
-                .or(optionalMinSupplier);
+        // Hide sell offers that are less than a factor 3 lower than the highest sell offer
+        double sellMinValue = model.getSellData().stream()
+                .mapToDouble(o -> o.getXValue().doubleValue())
+                .filter(o -> o > sellMaxValue / 3)
+                .min()
+                .orElse(Double.MAX_VALUE);
 
-        final Optional<XYChart.Data> sellMaxOptional = model.getSellData().stream()
-                .max(Comparator.comparingDouble(o -> (double) o.getXValue()))
-                .or(optionalMinSupplier);
-
-        final Optional<XYChart.Data> sellMinOptional = model.getSellData().stream()
-                .filter(o -> (double) o.getXValue() > (double) sellMaxOptional.get().getXValue() / 3)
-                .min(Comparator.comparingDouble(o -> (double) o.getXValue()))
-                .or(optionalMaxSupplier);
-
-        final double minValue = Double.min((double) buyMinOptional.get().getXValue(), (double) sellMinOptional.get().getXValue());
-        final double maxValue = Double.max((double) buyMaxOptional.get().getXValue(), (double) sellMaxOptional.get().getXValue());
+        double minValue = Double.min(buyMinValue, sellMinValue);
+        double maxValue = Double.max(buyMaxValue, sellMaxValue);
 
         if (minValue == Double.MAX_VALUE || maxValue == Double.MIN_VALUE) {
             xAxis.setAutoRanging(true);
@@ -401,11 +422,9 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
             xAxis.setTickUnit((maxValue - minValue) / 13);
         }
 
-        //noinspection unchecked
         seriesBuy.getData().addAll(model.getBuyData());
-        //noinspection unchecked
         seriesSell.getData().addAll(model.getSellData());
-        areaChart.getData().addAll(seriesBuy, seriesSell);
+        areaChart.getData().addAll(List.of(seriesBuy, seriesSell));
     }
 
     private Tuple4<TableView<OfferListItem>, VBox, Button, Label> getOfferTable(OfferPayload.Direction direction) {
@@ -573,7 +592,6 @@ public class OfferBookChartView extends ActivatableViewAndModel<VBox, OfferBookC
                                             offer,
                                             model.preferences,
                                             model.accountAgeWitnessService,
-                                            formatter,
                                             useDevPrivilegeKeys);
 //                                    setAlignment(Pos.CENTER);
                                     setGraphic(peerInfoIcon);

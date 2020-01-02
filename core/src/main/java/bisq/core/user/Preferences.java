@@ -32,8 +32,8 @@ import bisq.core.locale.FiatCurrency;
 import bisq.core.locale.GlobalSettings;
 import bisq.core.locale.TradeCurrency;
 import bisq.core.payment.PaymentAccount;
-import bisq.core.setup.CoreNetworkCapabilities;
 import bisq.core.payment.PaymentAccountUtil;
+import bisq.core.setup.CoreNetworkCapabilities;
 
 import bisq.network.p2p.network.BridgeAddressProvider;
 
@@ -43,11 +43,12 @@ import bisq.common.util.Utilities;
 
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Singleton;
 
 import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.LongProperty;
+import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.SimpleLongProperty;
+import javafx.beans.property.SimpleIntegerProperty;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
@@ -60,6 +61,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 import lombok.Getter;
@@ -74,11 +76,13 @@ import javax.annotation.Nullable;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 @Slf4j
+@Singleton
 public final class Preferences implements PersistedDataHost, BridgeAddressProvider {
 
     private static final ArrayList<BlockChainExplorer> BTC_MAIN_NET_EXPLORERS = new ArrayList<>(Arrays.asList(
             new BlockChainExplorer("Blockstream.info", "https://blockstream.info/tx/", "https://blockstream.info/address/"),
             new BlockChainExplorer("Blockstream.info Tor V3", "http://explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion/tx/", "http://explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion/address/"),
+            new BlockChainExplorer("Blockstream.info + Mempool.space", "https://mempool.space/tx/", "https://blockstream.info/address/"),
             new BlockChainExplorer("OXT", "https://oxt.me/transaction/", "https://oxt.me/address/"),
             new BlockChainExplorer("Bitaps", "https://bitaps.com/", "https://bitaps.com/"),
             new BlockChainExplorer("Blockcypher", "https://live.blockcypher.com/btc/tx/", "https://live.blockcypher.com/btc/address/"),
@@ -104,12 +108,10 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             new BlockChainExplorer("BTC DAO-testnet explorer", "https://bisq.network/explorer/btc/dao_testnet/tx/", "https://bisq.network/explorer/btc/dao_testnet/address/")
     ));
 
-    public static final BlockChainExplorer BSQ_MAIN_NET_EXPLORER = new BlockChainExplorer("BSQ", "https://explorer.bisq.network/tx.html?tx=",
-            "https://explorer.bisq.network/Address.html?addr=");
-    private static final BlockChainExplorer BSQ_BETA_NET_EXPLORER = new BlockChainExplorer("BSQ", "http://explorer.betanet.bisq.network/tx.html?tx=",
-            "http://explorer.betanet.bisq.network/Address.html?addr=");
-    private static final BlockChainExplorer BSQ_TEST_NET_EXPLORER = new BlockChainExplorer("BSQ", "http://explorer.testnet.bisq.network/tx.html?tx=",
-            "http://explorer.testnet.bisq.network/Address.html?addr=");
+    public static final ArrayList<BlockChainExplorer> BSQ_MAIN_NET_EXPLORERS = new ArrayList<>(Arrays.asList(
+            new BlockChainExplorer("bsq.wiz.biz (@wiz)", "https://bsq.wiz.biz/tx.html?tx=", "https://bsq.wiz.biz/Address.html?addr="),
+            new BlockChainExplorer("explorer.sqrrm.net (@sqrrm)", "https://explorer.sqrrm.net/tx.html?tx=", "https://explorer.sqrrm.net/Address.html?addr=")
+    ));
 
     // payload is initialized so the default values are available for Property initialization.
     @Setter
@@ -120,9 +122,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
     @Getter
     private final BooleanProperty useAnimationsProperty = new SimpleBooleanProperty(prefPayload.isUseAnimations());
     @Getter
-    private final BooleanProperty useCustomWithdrawalTxFeeProperty = new SimpleBooleanProperty(prefPayload.isUseCustomWithdrawalTxFee());
-    @Getter
-    private final LongProperty withdrawalTxFeeInBytesProperty = new SimpleLongProperty(prefPayload.getWithdrawalTxFeeInBytes());
+    private final IntegerProperty cssThemeProperty = new SimpleIntegerProperty(prefPayload.getCssTheme());
 
     private final ObservableList<FiatCurrency> fiatCurrenciesAsObservable = FXCollections.observableArrayList();
     private final ObservableList<CryptoCurrency> cryptoCurrenciesAsObservable = FXCollections.observableArrayList();
@@ -171,6 +171,11 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             persist();
         });
 
+        cssThemeProperty.addListener((ov) -> {
+            prefPayload.setCssTheme(cssThemeProperty.get());
+            persist();
+        });
+
         useStandbyModeProperty.addListener((ov) -> {
             prefPayload.setUseStandbyMode(useStandbyModeProperty.get());
             persist();
@@ -186,16 +191,6 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             prefPayload.getCryptoCurrencies().clear();
             prefPayload.getCryptoCurrencies().addAll(cryptoCurrenciesAsObservable);
             prefPayload.getCryptoCurrencies().sort(TradeCurrency::compareTo);
-            persist();
-        });
-
-        useCustomWithdrawalTxFeeProperty.addListener((ov) -> {
-            prefPayload.setUseCustomWithdrawalTxFee(useCustomWithdrawalTxFeeProperty.get());
-            persist();
-        });
-
-        withdrawalTxFeeInBytesProperty.addListener((ov) -> {
-            prefPayload.setWithdrawalTxFeeInBytes(withdrawalTxFeeInBytesProperty.get());
             persist();
         });
 
@@ -216,6 +211,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             setPreferredTradeCurrency(preferredTradeCurrency);
             setFiatCurrencies(prefPayload.getFiatCurrencies());
             setCryptoCurrencies(prefPayload.getCryptoCurrencies());
+            setBsqBlockChainExplorer(prefPayload.getBsqBlockChainExplorer());
         } else {
             prefPayload = new PreferencesPayload();
             prefPayload.setUserLanguage(GlobalSettings.getLocale().getLanguage());
@@ -244,11 +240,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             prefPayload.setSellScreenCurrencyCode(preferredTradeCurrency.getCode());
         }
 
-        prefPayload.setBsqBlockChainExplorer(baseCurrencyNetwork.isMainnet() ? BSQ_MAIN_NET_EXPLORER :
-                baseCurrencyNetwork.isDaoBetaNet() ? BSQ_BETA_NET_EXPLORER :
-                        BSQ_TEST_NET_EXPLORER);
-
-        // We don't want to pass Preferences to all popups where the dont show again checkbox is used, so we use
+        // We don't want to pass Preferences to all popups where the don't show again checkbox is used, so we use
         // that static lookup class to avoid static access to the Preferences directly.
         DontShowAgainLookup.setPreferences(this);
 
@@ -257,8 +249,13 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         // set all properties
         useAnimationsProperty.set(prefPayload.isUseAnimations());
         useStandbyModeProperty.set(prefPayload.isUseStandbyMode());
-        useCustomWithdrawalTxFeeProperty.set(prefPayload.isUseCustomWithdrawalTxFee());
-        withdrawalTxFeeInBytesProperty.set(prefPayload.getWithdrawalTxFeeInBytes());
+        cssThemeProperty.set(prefPayload.getCssTheme());
+
+        // if no valid block explorer is set, randomly select a valid BSQ block explorer
+        ArrayList<BlockChainExplorer> bsqExplorers = getBsqBlockChainExplorers();
+        BlockChainExplorer bsqExplorer = getBsqBlockChainExplorer();
+        if (bsqExplorer == null || bsqExplorers.contains(bsqExplorer) == false)
+            setBsqBlockChainExplorer(bsqExplorers.get((new Random()).nextInt(bsqExplorers.size())));
 
         tradeCurrenciesAsObservable.addAll(prefPayload.getFiatCurrencies());
         tradeCurrenciesAsObservable.addAll(prefPayload.getCryptoCurrencies());
@@ -330,6 +327,10 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         this.useAnimationsProperty.set(useAnimations);
     }
 
+    public void setCssTheme(boolean useDarkMode) {
+        this.cssThemeProperty.set(useDarkMode ? 1 : 0);
+    }
+
     public void addFiatCurrency(FiatCurrency tradeCurrency) {
         if (!fiatCurrenciesAsObservable.contains(tradeCurrency))
             fiatCurrenciesAsObservable.add(tradeCurrency);
@@ -337,8 +338,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
 
     public void removeFiatCurrency(FiatCurrency tradeCurrency) {
         if (tradeCurrenciesAsObservable.size() > 1) {
-            if (fiatCurrenciesAsObservable.contains(tradeCurrency))
-                fiatCurrenciesAsObservable.remove(tradeCurrency);
+            fiatCurrenciesAsObservable.remove(tradeCurrency);
 
             if (prefPayload.getPreferredTradeCurrency() != null &&
                     prefPayload.getPreferredTradeCurrency().equals(tradeCurrency))
@@ -355,8 +355,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
 
     public void removeCryptoCurrency(CryptoCurrency tradeCurrency) {
         if (tradeCurrenciesAsObservable.size() > 1) {
-            if (cryptoCurrenciesAsObservable.contains(tradeCurrency))
-                cryptoCurrenciesAsObservable.remove(tradeCurrency);
+            cryptoCurrenciesAsObservable.remove(tradeCurrency);
 
             if (prefPayload.getPreferredTradeCurrency() != null &&
                     prefPayload.getPreferredTradeCurrency().equals(tradeCurrency))
@@ -375,6 +374,11 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
 
     public void setTacAccepted(boolean tacAccepted) {
         prefPayload.setTacAccepted(tacAccepted);
+        persist();
+    }
+
+    public void setTacAcceptedV120(boolean tacAccepted) {
+        prefPayload.setTacAcceptedV120(tacAccepted);
         persist();
     }
 
@@ -486,16 +490,18 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
     }
 
     public void setUseCustomWithdrawalTxFee(boolean useCustomWithdrawalTxFee) {
-        useCustomWithdrawalTxFeeProperty.set(useCustomWithdrawalTxFee);
+        prefPayload.setUseCustomWithdrawalTxFee(useCustomWithdrawalTxFee);
+        persist();
     }
 
     public void setWithdrawalTxFeeInBytes(long withdrawalTxFeeInBytes) {
-        withdrawalTxFeeInBytesProperty.set(withdrawalTxFeeInBytes);
+        prefPayload.setWithdrawalTxFeeInBytes(withdrawalTxFeeInBytes);
+        persist();
     }
 
     public void setBuyerSecurityDepositAsPercent(double buyerSecurityDepositAsPercent, PaymentAccount paymentAccount) {
-        double max = Restrictions.getMaxBuyerSecurityDepositAsPercent(paymentAccount);
-        double min = Restrictions.getMinBuyerSecurityDepositAsPercent(paymentAccount);
+        double max = Restrictions.getMaxBuyerSecurityDepositAsPercent();
+        double min = Restrictions.getMinBuyerSecurityDepositAsPercent();
 
         if (PaymentAccountUtil.isCryptoCurrencyAccount(paymentAccount))
             prefPayload.setBuyerSecurityDepositAsPercentForCrypto(Math.min(max, Math.max(min, buyerSecurityDepositAsPercent)));
@@ -524,12 +530,17 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         cryptoCurrenciesAsObservable.setAll(currencies.stream().distinct().collect(Collectors.toList()));
     }
 
-    public void setBlockChainExplorerTestNet(BlockChainExplorer blockChainExplorerTestNet) {
+    public void setBsqBlockChainExplorer(BlockChainExplorer bsqBlockChainExplorer) {
+        prefPayload.setBsqBlockChainExplorer(bsqBlockChainExplorer);
+        persist();
+    }
+
+    private void setBlockChainExplorerTestNet(BlockChainExplorer blockChainExplorerTestNet) {
         prefPayload.setBlockChainExplorerTestNet(blockChainExplorerTestNet);
         persist();
     }
 
-    public void setBlockChainExplorerMainNet(BlockChainExplorer blockChainExplorerMainNet) {
+    private void setBlockChainExplorerMainNet(BlockChainExplorer blockChainExplorerMainNet) {
         prefPayload.setBlockChainExplorerMainNet(blockChainExplorerMainNet);
         persist();
     }
@@ -546,7 +557,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         storage.queueUpForSave(prefPayload, 1);
     }
 
-    // Only used from PB but keep it explicit as maybe it get used from the client and then we want to persist
+    // Only used from PB but keep it explicit as it may be used from the client and then we want to persist
     public void setPeerTagMap(Map<String, String> peerTagMap) {
         prefPayload.setPeerTagMap(peerTagMap);
         persist();
@@ -713,6 +724,8 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         }
     }
 
+    public ArrayList<BlockChainExplorer> getBsqBlockChainExplorers() { return BSQ_MAIN_NET_EXPLORERS; }
+
     public boolean showAgain(String key) {
         return !prefPayload.getDontShowAgainMap().containsKey(key) || !prefPayload.getDontShowAgainMap().get(key);
     }
@@ -729,25 +742,16 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             return prefPayload.isUseTorForBitcoinJ();
     }
 
-
-    public BooleanProperty useCustomWithdrawalTxFeeProperty() {
-        return useCustomWithdrawalTxFeeProperty;
-    }
-
-    public LongProperty withdrawalTxFeeInBytesProperty() {
-        return withdrawalTxFeeInBytesProperty;
-    }
-
     public double getBuyerSecurityDepositAsPercent(PaymentAccount paymentAccount) {
         double value = PaymentAccountUtil.isCryptoCurrencyAccount(paymentAccount) ?
                 prefPayload.getBuyerSecurityDepositAsPercentForCrypto() : prefPayload.getBuyerSecurityDepositAsPercent();
 
-        if (value < Restrictions.getMinBuyerSecurityDepositAsPercent(paymentAccount)) {
-            value = Restrictions.getMinBuyerSecurityDepositAsPercent(paymentAccount);
+        if (value < Restrictions.getMinBuyerSecurityDepositAsPercent()) {
+            value = Restrictions.getMinBuyerSecurityDepositAsPercent();
             setBuyerSecurityDepositAsPercent(value, paymentAccount);
         }
 
-        return value == 0 ? Restrictions.getDefaultBuyerSecurityDepositAsPercent(paymentAccount) : value;
+        return value == 0 ? Restrictions.getDefaultBuyerSecurityDepositAsPercent() : value;
     }
 
     //TODO remove and use isPayFeeInBtc instead
@@ -819,6 +823,8 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         void setTacAccepted(boolean tacAccepted);
 
         void setUseAnimations(boolean useAnimations);
+
+        void setCssTheme(int cssTheme);
 
         void setUserLanguage(@NotNull String userLanguageCode);
 
@@ -933,5 +939,7 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         String getRpcPw();
 
         int getBlockNotifyPort();
+
+        void setTacAcceptedV120(boolean tacAccepted);
     }
 }

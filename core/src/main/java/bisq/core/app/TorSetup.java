@@ -22,9 +22,10 @@ import bisq.network.NetworkOptionKeys;
 import bisq.common.handlers.ErrorMessageHandler;
 import bisq.common.storage.FileUtil;
 
-import com.google.inject.name.Named;
+import javax.inject.Named;
 
 import javax.inject.Inject;
+import javax.inject.Singleton;
 
 import java.nio.file.Paths;
 
@@ -36,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Nullable;
 
 @Slf4j
+@Singleton
 public class TorSetup {
     private File torDir;
 

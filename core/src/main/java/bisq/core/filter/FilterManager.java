@@ -38,13 +38,11 @@ import bisq.common.app.DevEnv;
 import bisq.common.app.Version;
 import bisq.common.crypto.KeyRing;
 
-import io.bisq.generated.protobuffer.PB;
-
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.Utils;
 
-import com.google.inject.Inject;
-import com.google.inject.name.Named;
+import javax.inject.Inject;
+import javax.inject.Named;
 
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -54,6 +52,7 @@ import java.security.SignatureException;
 import java.math.BigInteger;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -135,20 +134,27 @@ public class FilterManager {
 
             p2PService.addHashSetChangedListener(new HashMapChangedListener() {
                 @Override
-                public void onAdded(ProtectedStorageEntry data) {
-                    if (data.getProtectedStoragePayload() instanceof Filter) {
-                        Filter filter = (Filter) data.getProtectedStoragePayload();
-                        addFilter(filter);
-                    }
+                public void onAdded(Collection<ProtectedStorageEntry> protectedStorageEntries) {
+                    protectedStorageEntries.forEach(protectedStorageEntry -> {
+                        if (protectedStorageEntry.getProtectedStoragePayload() instanceof Filter) {
+                            Filter filter = (Filter) protectedStorageEntry.getProtectedStoragePayload();
+                            boolean wasValid = addFilter(filter);
+                            if (!wasValid) {
+                                UserThread.runAfter(() -> p2PService.getP2PDataStorage().removeInvalidProtectedStorageEntry(protectedStorageEntry), 1);
+                            }
+                        }
+                    });
                 }
 
                 @Override
-                public void onRemoved(ProtectedStorageEntry data) {
-                    if (data.getProtectedStoragePayload() instanceof Filter) {
-                        Filter filter = (Filter) data.getProtectedStoragePayload();
-                        if (verifySignature(filter))
-                            resetFilters();
-                    }
+                public void onRemoved(Collection<ProtectedStorageEntry> protectedStorageEntries) {
+                    protectedStorageEntries.forEach(protectedStorageEntry -> {
+                        if (protectedStorageEntry.getProtectedStoragePayload() instanceof Filter) {
+                            Filter filter = (Filter) protectedStorageEntry.getProtectedStoragePayload();
+                            if (verifySignature(filter))
+                                resetFilters();
+                        }
+                    });
                 }
             });
         }
@@ -168,7 +174,7 @@ public class FilterManager {
 
             @Override
             public void onUpdatedDataReceived() {
-                // We should have received all data at that point and if the filers was not set we
+                // We should have received all data at that point and if the filers were not set we
                 // clean up as it might be that we missed the filter remove message if we have not been online.
                 UserThread.runAfter(() -> {
                     if (filterProperty.get() == null)
@@ -205,7 +211,7 @@ public class FilterManager {
         filterProperty.set(null);
     }
 
-    private void addFilter(Filter filter) {
+    private boolean addFilter(Filter filter) {
         if (verifySignature(filter)) {
             // Seed nodes are requested at startup before we get the filter so we only apply the banned
             // nodes at the next startup and don't update the list in the P2P network domain.
@@ -225,6 +231,9 @@ public class FilterManager {
             if (filter.isPreventPublicBtcNetwork() &&
                     preferences.getBitcoinNodesOptionOrdinal() == BtcNodes.BitcoinNodesOption.PUBLIC.ordinal())
                 preferences.setBitcoinNodesOptionOrdinal(BtcNodes.BitcoinNodesOption.PROVIDED.ordinal());
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -256,7 +265,7 @@ public class FilterManager {
             signAndAddSignatureToFilter(filter);
             user.setDevelopersFilter(filter);
 
-            boolean result = p2PService.addProtectedStorageEntry(filter, true);
+            boolean result = p2PService.addProtectedStorageEntry(filter);
             if (result)
                 log.trace("Add filter to network was successful. FilterMessage = {}", filter);
 
@@ -269,7 +278,7 @@ public class FilterManager {
             Filter filter = user.getDevelopersFilter();
             if (filter == null) {
                 log.warn("Developers filter is null");
-            } else if (p2PService.removeData(filter, true)) {
+            } else if (p2PService.removeData(filter)) {
                 log.trace("Remove filter from network was successful. FilterMessage = {}", filter);
                 user.setDevelopersFilter(null);
             } else {
@@ -299,14 +308,14 @@ public class FilterManager {
             ECKey.fromPublicOnly(HEX.decode(pubKeyAsHex)).verifyMessage(getHexFromData(filter), filter.getSignatureAsBase64());
             return true;
         } catch (SignatureException e) {
-            log.warn("verifySignature failed");
+            log.warn("verifySignature failed. filter={}", filter);
             return false;
         }
     }
 
-    // We dont use full data from Filter as we are only interested in the filter data not the sig and keys
+    // We don't use full data from Filter as we are only interested in the filter data not the sig and keys
     private String getHexFromData(Filter filter) {
-        PB.Filter.Builder builder = PB.Filter.newBuilder()
+        protobuf.Filter.Builder builder = protobuf.Filter.newBuilder()
                 .addAllBannedOfferIds(filter.getBannedOfferIds())
                 .addAllBannedNodeAddress(filter.getBannedNodeAddress())
                 .addAllBannedPaymentAccounts(filter.getBannedPaymentAccounts().stream()

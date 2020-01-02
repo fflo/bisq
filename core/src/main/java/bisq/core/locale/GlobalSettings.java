@@ -25,6 +25,7 @@ import java.util.Locale;
 
 public class GlobalSettings {
     private static boolean useAnimations = true;
+    private static boolean useDarkMode = false;
     private static Locale locale;
     private static final ObjectProperty<Locale> localeProperty = new SimpleObjectProperty<>(locale);
     private static TradeCurrency defaultTradeCurrency;
@@ -33,7 +34,7 @@ public class GlobalSettings {
     static {
         locale = Locale.getDefault();
 
-        // On some systems there is not country defined, in that case we use en_US
+        // On some systems there is no country defined, in that case we use en_US
         if (locale.getCountry() == null || locale.getCountry().isEmpty())
             locale = Locale.US;
     }
@@ -45,6 +46,10 @@ public class GlobalSettings {
 
     public static void setUseAnimations(boolean useAnimations) {
         GlobalSettings.useAnimations = useAnimations;
+    }
+
+    public static void setUseDarkMode(boolean useDarkMode) {
+        GlobalSettings.useDarkMode = useDarkMode;
     }
 
     public static void setDefaultTradeCurrency(TradeCurrency fiatCurrency) {

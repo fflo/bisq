@@ -31,8 +31,8 @@ import bisq.common.crypto.KeyRing;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.Utils;
 
-import com.google.inject.Inject;
-import com.google.inject.name.Named;
+import javax.inject.Inject;
+import javax.inject.Named;
 
 import com.google.common.base.Charsets;
 
@@ -43,6 +43,8 @@ import javafx.beans.property.SimpleObjectProperty;
 import java.security.SignatureException;
 
 import java.math.BigInteger;
+
+import java.util.Collection;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,22 +81,26 @@ public class AlertManager {
         if (!ignoreDevMsg) {
             p2PService.addHashSetChangedListener(new HashMapChangedListener() {
                 @Override
-                public void onAdded(ProtectedStorageEntry data) {
-                    final ProtectedStoragePayload protectedStoragePayload = data.getProtectedStoragePayload();
-                    if (protectedStoragePayload instanceof Alert) {
-                        Alert alert = (Alert) protectedStoragePayload;
-                        if (verifySignature(alert))
-                            alertMessageProperty.set(alert);
-                    }
+                public void onAdded(Collection<ProtectedStorageEntry> protectedStorageEntries) {
+                    protectedStorageEntries.forEach(protectedStorageEntry -> {
+                        final ProtectedStoragePayload protectedStoragePayload = protectedStorageEntry.getProtectedStoragePayload();
+                        if (protectedStoragePayload instanceof Alert) {
+                            Alert alert = (Alert) protectedStoragePayload;
+                            if (verifySignature(alert))
+                                alertMessageProperty.set(alert);
+                        }
+                    });
                 }
 
                 @Override
-                public void onRemoved(ProtectedStorageEntry data) {
-                    final ProtectedStoragePayload protectedStoragePayload = data.getProtectedStoragePayload();
-                    if (protectedStoragePayload instanceof Alert) {
-                        if (verifySignature((Alert) protectedStoragePayload))
-                            alertMessageProperty.set(null);
-                    }
+                public void onRemoved(Collection<ProtectedStorageEntry> protectedStorageEntries) {
+                    protectedStorageEntries.forEach(protectedStorageEntry -> {
+                        final ProtectedStoragePayload protectedStoragePayload = protectedStorageEntry.getProtectedStoragePayload();
+                        if (protectedStoragePayload instanceof Alert) {
+                            if (verifySignature((Alert) protectedStoragePayload))
+                                alertMessageProperty.set(null);
+                        }
+                    });
                 }
             });
         }
@@ -121,7 +127,7 @@ public class AlertManager {
         if (isKeyValid) {
             signAndAddSignatureToAlertMessage(alert);
             user.setDevelopersAlert(alert);
-            boolean result = p2PService.addProtectedStorageEntry(alert, true);
+            boolean result = p2PService.addProtectedStorageEntry(alert);
             if (result) {
                 log.trace("Add alertMessage to network was successful. AlertMessage={}", alert);
             }
@@ -133,7 +139,7 @@ public class AlertManager {
     public boolean removeAlertMessageIfKeyIsValid(String privKeyString) {
         Alert alert = user.getDevelopersAlert();
         if (isKeyValid(privKeyString) && alert != null) {
-            if (p2PService.removeData(alert, true))
+            if (p2PService.removeData(alert))
                 log.trace("Remove alertMessage from network was successful. AlertMessage={}", alert);
 
             user.setDevelopersAlert(null);

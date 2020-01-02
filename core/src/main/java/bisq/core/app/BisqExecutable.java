@@ -17,7 +17,6 @@
 
 package bisq.core.app;
 
-import bisq.core.arbitration.ArbitratorManager;
 import bisq.core.btc.BtcOptionKeys;
 import bisq.core.btc.setup.RegTestHost;
 import bisq.core.btc.setup.WalletsSetup;
@@ -29,6 +28,7 @@ import bisq.core.exceptions.BisqException;
 import bisq.core.offer.OpenOfferManager;
 import bisq.core.setup.CorePersistedDataHost;
 import bisq.core.setup.CoreSetup;
+import bisq.core.support.dispute.arbitration.arbitrator.ArbitratorManager;
 import bisq.core.trade.TradeManager;
 
 import bisq.network.NetworkOptionKeys;
@@ -42,8 +42,6 @@ import bisq.common.app.DevEnv;
 import bisq.common.handlers.ResultHandler;
 import bisq.common.proto.persistable.PersistedDataHost;
 import bisq.common.setup.GracefulShutDownHandler;
-import bisq.common.storage.CorruptedDatabaseFilesHandler;
-import bisq.common.storage.Storage;
 
 import org.springframework.core.env.JOptCommandLinePropertySource;
 
@@ -74,7 +72,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.String.format;
 
 @Slf4j
-public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSetup.BisqSetupCompleteListener {
+public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSetup.BisqSetupListener {
 
     private final String fullName;
     private final String scriptName;
@@ -170,7 +168,7 @@ public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSet
          * The parsing is done when the actual value is going to be retrieved, i.e. options.valueOf(attributename).
          *
          * In order to keep usability high, we work around the aforementioned characteristics by catching the exception below
-         * (valueOf is called somewhere in getBisqEnvironment), thus, neatly inform the user of a ill-formed parameter and stop execution.
+         * (valueOf is called somewhere in getBisqEnvironment), thus, neatly inform the user of an ill-formed parameter and stop execution.
          *
          * Might be changed when the project features more user parameters meant for the user.
          */
@@ -232,8 +230,6 @@ public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSet
     protected void applyInjector() {
         setupDevEnv();
 
-        setCorruptedDataBaseFilesHandler();
-
         setupPersistedDataHosts(injector);
     }
 
@@ -242,20 +238,15 @@ public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSet
         DevEnv.setDaoActivated(BisqEnvironment.isDaoActivated(bisqEnvironment));
     }
 
-    private void setCorruptedDataBaseFilesHandler() {
-        CorruptedDatabaseFilesHandler corruptedDatabaseFilesHandler = injector.getInstance(CorruptedDatabaseFilesHandler.class);
-        Storage.setCorruptedDatabaseFilesHandler(corruptedDatabaseFilesHandler);
-    }
-
     protected void setupPersistedDataHosts(Injector injector) {
         try {
             PersistedDataHost.apply(CorePersistedDataHost.getPersistedDataHosts(injector));
         } catch (Throwable t) {
+            log.error("Error at PersistedDataHost.apply: {}", t.toString(), t);
             // If we are in dev mode we want to get the exception if some db files are corrupted
             // We need to delay it as the stage is not created yet and so popups would not be shown.
             if (DevEnv.isDevMode())
                 UserThread.runAfter(() -> {
-                    log.error("Error at PersistedDataHost.apply: {}", t.toString());
                     throw t;
                 }, 2);
         }
@@ -270,7 +261,7 @@ public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSet
 
     protected void startAppSetup() {
         BisqSetup bisqSetup = injector.getInstance(BisqSetup.class);
-        bisqSetup.addBisqSetupCompleteListener(this);
+        bisqSetup.addBisqSetupListener(this);
         bisqSetup.start();
     }
 
@@ -290,12 +281,14 @@ public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSet
                 injector.getInstance(TradeManager.class).shutDown();
                 injector.getInstance(DaoSetup.class).shutDown();
                 injector.getInstance(OpenOfferManager.class).shutDown(() -> {
+                    log.info("OpenOfferManager shutdown completed");
                     injector.getInstance(P2PService.class).shutDown(() -> {
+                        log.info("P2PService shutdown completed");
                         injector.getInstance(WalletsSetup.class).shutDownComplete.addListener((ov, o, n) -> {
+                            log.info("WalletsSetup shutdown completed");
                             module.close(injector);
-                            log.debug("Graceful shutdown completed");
                             resultHandler.handleResult();
-
+                            log.info("Graceful shutdown completed. Exiting now.");
                             System.exit(0);
                         });
                         injector.getInstance(WalletsSetup.class).shutDown();
@@ -541,12 +534,20 @@ public abstract class BisqExecutable implements GracefulShutDownHandler, BisqSet
                 "Bitcoind rpc password")
                 .withRequiredArg();
 
+        parser.accepts(DaoOptionKeys.RPC_HOST,
+                "Bitcoind rpc host")
+                .withRequiredArg();
+
         parser.accepts(DaoOptionKeys.RPC_PORT,
                 "Bitcoind rpc port")
                 .withRequiredArg();
 
         parser.accepts(DaoOptionKeys.RPC_BLOCK_NOTIFICATION_PORT,
                 "Bitcoind rpc port for block notifications")
+                .withRequiredArg();
+
+        parser.accepts(DaoOptionKeys.RPC_BLOCK_NOTIFICATION_HOST,
+                "Bitcoind rpc accepted incoming host for block notifications")
                 .withRequiredArg();
 
         parser.accepts(DaoOptionKeys.DUMP_BLOCKCHAIN_DATA,

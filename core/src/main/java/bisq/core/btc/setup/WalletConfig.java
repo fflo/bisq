@@ -55,6 +55,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.AbstractIdleService;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -215,8 +216,6 @@ public class WalletConfig extends AbstractIdleService {
         // no proxy case.
         if (socks5Proxy == null) {
             peerGroup = new PeerGroup(params, vChain);
-            // For dao testnet (server side regtest) we prevent to connect to a localhost node to avoid confusion
-            // if local btc node is not synced with our dao testnet master node.
         } else {
             // proxy case (tor).
             Proxy proxy = new Proxy(Proxy.Type.SOCKS,
@@ -237,7 +236,9 @@ public class WalletConfig extends AbstractIdleService {
 
         // For dao testnet (server side regtest) we prevent to connect to a localhost node to avoid confusion
         // if local btc node is not synced with our dao testnet master node.
-        if (BisqEnvironment.getBaseCurrencyNetwork().isDaoRegTest() || BisqEnvironment.getBaseCurrencyNetwork().isDaoTestNet())
+        if (BisqEnvironment.getBaseCurrencyNetwork().isDaoRegTest() ||
+                BisqEnvironment.getBaseCurrencyNetwork().isDaoTestNet() ||
+                !bisqEnvironment.isBitcoinLocalhostNodeRunning())
             peerGroup.setUseLocalhostPeerWhenPossible(false);
 
         return peerGroup;
@@ -465,7 +466,7 @@ public class WalletConfig extends AbstractIdleService {
                 vPeerGroup.startBlockChainDownload(listener);
                 listener.await();
             } else {
-                Futures.addCallback(vPeerGroup.startAsync(), new FutureCallback() {
+                Futures.addCallback((ListenableFuture<?>) vPeerGroup.startAsync(), new FutureCallback<Object>() {
                     @Override
                     public void onSuccess(@Nullable Object result) {
                         final PeerDataEventListener listener = downloadListener == null ?
@@ -476,7 +477,6 @@ public class WalletConfig extends AbstractIdleService {
                     @Override
                     public void onFailure(@NotNull Throwable t) {
                         throw new RuntimeException(t);
-
                     }
                 });
             }
@@ -561,13 +561,12 @@ public class WalletConfig extends AbstractIdleService {
 
     private void installShutdownHook() {
         if (autoStop) Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            Thread.currentThread().setName("ShutdownHook");
             try {
                 WalletConfig.this.stopAsync();
                 WalletConfig.this.awaitTerminated();
             } catch (Throwable ignore) {
             }
-        }));
+        }, "WalletConfig ShutdownHook"));
     }
 
     @Override

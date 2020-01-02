@@ -30,7 +30,6 @@ import bisq.desktop.util.ImageUtil;
 import bisq.desktop.util.Layout;
 
 import bisq.core.app.BisqEnvironment;
-import bisq.core.btc.BaseCurrencyNetwork;
 import bisq.core.btc.wallet.Restrictions;
 import bisq.core.dao.DaoFacade;
 import bisq.core.dao.DaoOptionKeys;
@@ -47,12 +46,14 @@ import bisq.core.locale.TradeCurrency;
 import bisq.core.provider.fee.FeeService;
 import bisq.core.user.BlockChainExplorer;
 import bisq.core.user.Preferences;
-import bisq.core.util.BSFormatter;
+import bisq.core.util.FormattingUtils;
+import bisq.core.util.ParsingUtils;
 import bisq.core.util.validation.IntegerValidator;
 
 import bisq.common.UserThread;
 import bisq.common.app.DevEnv;
 import bisq.common.util.Tuple3;
+import bisq.common.util.Utilities;
 
 import org.bitcoinj.core.Coin;
 
@@ -100,13 +101,13 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
     // not supported yet
     //private ComboBox<String> btcDenominationComboBox;
     private ComboBox<BlockChainExplorer> blockChainExplorerComboBox;
+    private ComboBox<BlockChainExplorer> bsqBlockChainExplorerComboBox;
     private ComboBox<String> userLanguageComboBox;
     private ComboBox<Country> userCountryComboBox;
     private ComboBox<TradeCurrency> preferredTradeCurrencyComboBox;
-    //private ComboBox<BaseCurrencyNetwork> selectBaseCurrencyNetworkComboBox;
 
-    private ToggleButton showOwnOffersInOfferBook, useAnimations, sortMarketCurrenciesNumerically, avoidStandbyMode,
-            useCustomFee;
+    private ToggleButton showOwnOffersInOfferBook, useAnimations, useDarkMode, sortMarketCurrenciesNumerically,
+            avoidStandbyMode, useCustomFee;
     private int gridRow = 0;
     private InputTextField transactionFeeInputTextField, ignoreTradersListInputTextField, ignoreDustThresholdInputTextField,
     /*referralIdInputTextField,*/
@@ -122,7 +123,6 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
     private final AssetService assetService;
     private final FilterManager filterManager;
     private final DaoFacade daoFacade;
-    private final BSFormatter formatter;
 
     private ListView<FiatCurrency> fiatCurrenciesListView;
     private ComboBox<FiatCurrency> fiatCurrenciesComboBox;
@@ -131,6 +131,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
     private Button resetDontShowAgainButton, resyncDaoButton;
     // private ListChangeListener<TradeCurrency> displayCurrenciesListChangeListener;
     private ObservableList<BlockChainExplorer> blockExplorers;
+    private ObservableList<BlockChainExplorer> bsqBlockChainExplorers;
     private ObservableList<String> languageCodes;
     private ObservableList<Country> countries;
     private ObservableList<FiatCurrency> fiatCurrencies;
@@ -145,7 +146,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
     private ChangeListener<Boolean> useCustomFeeCheckboxListener;
     private ChangeListener<Number> transactionFeeChangeListener;
     private final boolean daoOptionsSet;
-
+    private final boolean displayStandbyModeFeature;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructor, initialisation
@@ -158,7 +159,6 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
                            AssetService assetService,
                            FilterManager filterManager,
                            DaoFacade daoFacade,
-                           BSFormatter formatter,
                            @Named(DaoOptionKeys.FULL_DAO_NODE) String fullDaoNode,
                            @Named(DaoOptionKeys.RPC_USER) String rpcUser,
                            @Named(DaoOptionKeys.RPC_PASSWORD) String rpcPassword,
@@ -169,16 +169,17 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
         this.assetService = assetService;
         this.filterManager = filterManager;
         this.daoFacade = daoFacade;
-        this.formatter = formatter;
         daoOptionsSet = fullDaoNode != null && !fullDaoNode.isEmpty() &&
                 rpcUser != null && !rpcUser.isEmpty() &&
                 rpcPassword != null && !rpcPassword.isEmpty() &&
                 rpcBlockNotificationPort != null && !rpcBlockNotificationPort.isEmpty();
+        this.displayStandbyModeFeature = Utilities.isOSX() || Utilities.isWindows();
     }
 
     @Override
     public void initialize() {
         blockExplorers = FXCollections.observableArrayList(preferences.getBlockChainExplorers());
+        bsqBlockChainExplorers = FXCollections.observableArrayList(preferences.getBsqBlockChainExplorers());
         languageCodes = FXCollections.observableArrayList(LanguageUtil.getUserLanguageCodes());
         countries = FXCollections.observableArrayList(CountryUtil.getAllCountries());
         fiatCurrencies = preferences.getFiatCurrenciesAsObservable();
@@ -225,28 +226,9 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     private void initializeGeneralOptions() {
-        TitledGroupBg titledGroupBg = addTitledGroupBg(root, gridRow, 8, Res.get("setting.preferences.general"));
+        int titledGroupBgRowSpan = displayStandbyModeFeature ? 8 : 7;
+        TitledGroupBg titledGroupBg = addTitledGroupBg(root, gridRow, titledGroupBgRowSpan, Res.get("setting.preferences.general"));
         GridPane.setColumnSpan(titledGroupBg, 1);
-
-        // selectBaseCurrencyNetwork
-      /*  selectBaseCurrencyNetworkComboBox = FormBuilder.addComboBox(root, gridRow,
-                Res.get("settings.preferences.selectCurrencyNetwork"), Layout.FIRST_ROW_DISTANCE);
-
-        selectBaseCurrencyNetworkComboBox.setButtonCell(GUIUtil.getComboBoxButtonCell(Res.get("settings.preferences.selectCurrencyNetwork"),
-                selectBaseCurrencyNetworkComboBox, false));
-        selectBaseCurrencyNetworkComboBox.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(BaseCurrencyNetwork baseCurrencyNetwork) {
-                return baseCurrencyNetwork != null ?
-                        Res.get(baseCurrencyNetwork.name()) :
-                        Res.get("na");
-            }
-
-            @Override
-            public BaseCurrencyNetwork fromString(String string) {
-                return null;
-            }
-        });*/
 
         userLanguageComboBox = addComboBox(root, gridRow,
                 Res.get("shared.language"), Layout.FIRST_ROW_DISTANCE);
@@ -254,10 +236,16 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
                 Res.get("shared.country"));
         userCountryComboBox.setButtonCell(GUIUtil.getComboBoxButtonCell(Res.get("shared.country"), userCountryComboBox,
                 false));
+
         blockChainExplorerComboBox = addComboBox(root, ++gridRow,
                 Res.get("setting.preferences.explorer"));
         blockChainExplorerComboBox.setButtonCell(GUIUtil.getComboBoxButtonCell(Res.get("setting.preferences.explorer"),
                 blockChainExplorerComboBox, false));
+
+        bsqBlockChainExplorerComboBox = addComboBox(root, ++gridRow,
+                Res.get("setting.preferences.explorer.bsq"));
+        bsqBlockChainExplorerComboBox.setButtonCell(GUIUtil.getComboBoxButtonCell(Res.get("setting.preferences.explorer.bsq"),
+                bsqBlockChainExplorerComboBox, false));
 
         Tuple3<Label, InputTextField, ToggleButton> tuple = addTopLabelInputTextFieldSlideToggleButton(root, ++gridRow,
                 Res.get("setting.preferences.txFee"), Res.get("setting.preferences.useCustomValue"));
@@ -286,10 +274,10 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
                     int withdrawalTxFeePerByte = Integer.parseInt(transactionFeeInputTextField.getText());
                     final long minFeePerByte = BisqEnvironment.getBaseCurrencyNetwork().getDefaultMinFeePerByte();
                     if (withdrawalTxFeePerByte < minFeePerByte) {
-                        new Popup<>().warning(Res.get("setting.preferences.txFeeMin", minFeePerByte)).show();
+                        new Popup().warning(Res.get("setting.preferences.txFeeMin", minFeePerByte)).show();
                         transactionFeeInputTextField.setText(estimatedFee);
                     } else if (withdrawalTxFeePerByte > 5000) {
-                        new Popup<>().warning(Res.get("setting.preferences.txFeeTooLarge")).show();
+                        new Popup().warning(Res.get("setting.preferences.txFeeTooLarge")).show();
                         transactionFeeInputTextField.setText(estimatedFee);
                     } else {
                         preferences.setWithdrawalTxFeeInBytes(withdrawalTxFeePerByte);
@@ -297,12 +285,12 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
                 } catch (NumberFormatException t) {
                     log.error(t.toString());
                     t.printStackTrace();
-                    new Popup<>().warning(Res.get("validation.integerOnly")).show();
+                    new Popup().warning(Res.get("validation.integerOnly")).show();
                     transactionFeeInputTextField.setText(estimatedFee);
                 } catch (Throwable t) {
                     log.error(t.toString());
                     t.printStackTrace();
-                    new Popup<>().warning(Res.get("validation.inputError", t.getMessage())).show();
+                    new Popup().warning(Res.get("validation.inputError", t.getMessage())).show();
                     transactionFeeInputTextField.setText(estimatedFee);
                 }
             }
@@ -315,22 +303,22 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
 
         deviationListener = (observable, oldValue, newValue) -> {
             try {
-                double value = formatter.parsePercentStringToDouble(newValue);
+                double value = ParsingUtils.parsePercentStringToDouble(newValue);
                 final double maxDeviation = 0.5;
                 if (value <= maxDeviation) {
                     preferences.setMaxPriceDistanceInPercent(value);
                 } else {
-                    new Popup<>().warning(Res.get("setting.preferences.deviationToLarge", maxDeviation * 100)).show();
-                    UserThread.runAfter(() -> deviationInputTextField.setText(formatter.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent())), 100, TimeUnit.MILLISECONDS);
+                    new Popup().warning(Res.get("setting.preferences.deviationToLarge", maxDeviation * 100)).show();
+                    UserThread.runAfter(() -> deviationInputTextField.setText(FormattingUtils.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent())), 100, TimeUnit.MILLISECONDS);
                 }
             } catch (NumberFormatException t) {
                 log.error("Exception at parseDouble deviation: " + t.toString());
-                UserThread.runAfter(() -> deviationInputTextField.setText(formatter.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent())), 100, TimeUnit.MILLISECONDS);
+                UserThread.runAfter(() -> deviationInputTextField.setText(FormattingUtils.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent())), 100, TimeUnit.MILLISECONDS);
             }
         };
         deviationFocusedListener = (observable1, oldValue1, newValue1) -> {
             if (oldValue1 && !newValue1)
-                UserThread.runAfter(() -> deviationInputTextField.setText(formatter.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent())), 100, TimeUnit.MILLISECONDS);
+                UserThread.runAfter(() -> deviationInputTextField.setText(FormattingUtils.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent())), 100, TimeUnit.MILLISECONDS);
         };
 
         // ignoreTraders
@@ -367,9 +355,11 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
             }
         };
 
-        // AvoidStandbyModeService
-        avoidStandbyMode = addSlideToggleButton(root, ++gridRow,
-                Res.get("setting.preferences.avoidStandbyMode"));
+        if (displayStandbyModeFeature) {
+            // AvoidStandbyModeService feature works only on OSX & Windows
+            avoidStandbyMode = addSlideToggleButton(root, ++gridRow,
+                    Res.get("setting.preferences.avoidStandbyMode"));
+        }
     }
 
     private void initializeSeparator() {
@@ -450,7 +440,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
                             label.setText(item.getNameAndCode());
                             removeButton.setOnAction(e -> {
                                 if (item.equals(preferences.getPreferredTradeCurrency())) {
-                                    new Popup<>().warning(Res.get("setting.preferences.cannotRemovePrefCurrency")).show();
+                                    new Popup().warning(Res.get("setting.preferences.cannotRemovePrefCurrency")).show();
                                 } else {
                                     preferences.removeFiatCurrency(item);
                                     if (!allFiatCurrencies.contains(item)) {
@@ -505,7 +495,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
                             label.setText(item.getNameAndCode());
                             removeButton.setOnAction(e -> {
                                 if (item.equals(preferences.getPreferredTradeCurrency())) {
-                                    new Popup<>().warning(Res.get("setting.preferences.cannotRemovePrefCurrency")).show();
+                                    new Popup().warning(Res.get("setting.preferences.cannotRemovePrefCurrency")).show();
                                 } else {
                                     preferences.removeCryptoCurrency(item);
                                     if (!allCryptoCurrencies.contains(item)) {
@@ -587,12 +577,13 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
     }
 
     private void initializeDisplayOptions() {
-        TitledGroupBg titledGroupBg = addTitledGroupBg(root, ++gridRow, 4, Res.get("setting.preferences.displayOptions"), Layout.GROUP_DISTANCE);
+        TitledGroupBg titledGroupBg = addTitledGroupBg(root, ++gridRow, 5, Res.get("setting.preferences.displayOptions"), Layout.GROUP_DISTANCE);
         GridPane.setColumnSpan(titledGroupBg, 1);
 
 //        showOwnOffersInOfferBook = addLabelCheckBox(root, gridRow, Res.get("setting.preferences.showOwnOffers"), Layout.FIRST_ROW_AND_GROUP_DISTANCE);
         showOwnOffersInOfferBook = addSlideToggleButton(root, gridRow, Res.get("setting.preferences.showOwnOffers"), Layout.FIRST_ROW_AND_GROUP_DISTANCE);
         useAnimations = addSlideToggleButton(root, ++gridRow, Res.get("setting.preferences.useAnimations"));
+        useDarkMode = addSlideToggleButton(root, ++gridRow, Res.get("setting.preferences.useDarkMode"));
         // useStickyMarketPriceCheckBox = addLabelCheckBox(root, ++gridRow, "Use sticky market price:", "").second;
         sortMarketCurrenciesNumerically = addSlideToggleButton(root, ++gridRow, Res.get("setting.preferences.sortWithNumOffers"));
         resetDontShowAgainButton = addButton(root, ++gridRow, Res.get("setting.preferences.resetAllFlags"), 0);
@@ -686,12 +677,13 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
             String selectedItem = userLanguageComboBox.getSelectionModel().getSelectedItem();
             if (selectedItem != null) {
                 preferences.setUserLanguage(selectedItem);
-                new Popup<>().information(Res.get("settings.preferences.languageChange"))
+                new Popup().information(Res.get("settings.preferences.languageChange"))
                         .closeButtonText(Res.get("shared.ok"))
                         .show();
 
-                if (model.needsArbitrationLanguageWarning()) {
-                    new Popup<>().warning(Res.get("settings.preferences.arbitrationLanguageWarning",
+                if (model.needsSupportLanguageWarning()) {
+                    new Popup().warning(Res.get("settings.preferences.supportLanguageWarning",
+                            model.getMediationLanguages(),
                             model.getArbitrationLanguages()))
                             .closeButtonText(Res.get("shared.ok"))
                             .show();
@@ -745,7 +737,22 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
         });
         blockChainExplorerComboBox.setOnAction(e -> preferences.setBlockChainExplorer(blockChainExplorerComboBox.getSelectionModel().getSelectedItem()));
 
-        deviationInputTextField.setText(formatter.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent()));
+        bsqBlockChainExplorerComboBox.setItems(bsqBlockChainExplorers);
+        bsqBlockChainExplorerComboBox.getSelectionModel().select(preferences.getBsqBlockChainExplorer());
+        bsqBlockChainExplorerComboBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(BlockChainExplorer bsqBlockChainExplorer) {
+                return bsqBlockChainExplorer.name;
+            }
+
+            @Override
+            public BlockChainExplorer fromString(String string) {
+                return null;
+            }
+        });
+        bsqBlockChainExplorerComboBox.setOnAction(e -> preferences.setBsqBlockChainExplorer(bsqBlockChainExplorerComboBox.getSelectionModel().getSelectedItem()));
+
+        deviationInputTextField.setText(FormattingUtils.formatPercentagePrice(preferences.getMaxPriceDistanceInPercent()));
         deviationInputTextField.textProperty().addListener(deviationListener);
         deviationInputTextField.focusedProperty().addListener(deviationFocusedListener);
 
@@ -813,6 +820,9 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
         useAnimations.setSelected(preferences.isUseAnimations());
         useAnimations.setOnAction(e -> preferences.setUseAnimations(useAnimations.isSelected()));
 
+        useDarkMode.setSelected(preferences.getCssTheme() == 1);
+        useDarkMode.setOnAction(e -> preferences.setCssTheme(useDarkMode.isSelected()));
+
         // useStickyMarketPriceCheckBox.setSelected(preferences.isUseStickyMarketPrice());
         // useStickyMarketPriceCheckBox.setOnAction(e -> preferences.setUseStickyMarketPrice(useStickyMarketPriceCheckBox.isSelected()));
 
@@ -823,8 +833,12 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
 
         // We use opposite property (useStandbyMode) in preferences to have the default value (false) set as we want it,
         // so users who update gets set avoidStandbyMode=true (useStandbyMode=false)
-        avoidStandbyMode.setSelected(!preferences.isUseStandbyMode());
-        avoidStandbyMode.setOnAction(e -> preferences.setUseStandbyMode(!avoidStandbyMode.isSelected()));
+        if (displayStandbyModeFeature) {
+            avoidStandbyMode.setSelected(!preferences.isUseStandbyMode());
+            avoidStandbyMode.setOnAction(e -> preferences.setUseStandbyMode(!avoidStandbyMode.isSelected()));
+        } else {
+            preferences.setUseStandbyMode(false);
+        }
     }
 
     private void activateDaoPreferences() {
@@ -834,8 +848,8 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
         String rpcPw = preferences.getRpcPw();
         int blockNotifyPort = preferences.getBlockNotifyPort();
         if (daoFullNode && (rpcUser == null || rpcUser.isEmpty() ||
-                rpcPw == null || rpcPw.isEmpty()) ||
-                blockNotifyPort <= 0) {
+                rpcPw == null || rpcPw.isEmpty() ||
+                blockNotifyPort <= 0)) {
             log.warn("You have full DAO node selected but have not provided the rpc username, password and " +
                     "block notify port. We reset daoFullNode to false");
             isDaoFullNodeToggleButton.setSelected(false);
@@ -846,7 +860,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
         updateDaoFields();
 
         resyncDaoButton.setOnAction(e -> daoFacade.resyncDao(() ->
-                new Popup<>().attention(Res.get("setting.preferences.dao.resync.popup"))
+                new Popup().attention(Res.get("setting.preferences.dao.resync.popup"))
                         .useShutDownButton()
                         .hideCloseButton()
                         .show()));
@@ -855,7 +869,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
             String key = "daoFullModeInfoShown";
             if (isDaoFullNodeToggleButton.isSelected() && preferences.showAgain(key)) {
                 String url = "https://bisq.network/docs/dao-full-node";
-                new Popup<>().backgroundInfo(Res.get("setting.preferences.dao.fullNodeInfo", url))
+                new Popup().backgroundInfo(Res.get("setting.preferences.dao.fullNodeInfo", url))
                         .onAction(() -> GUIUtil.openWebPage(url))
                         .actionButtonText(Res.get("setting.preferences.dao.fullNodeInfo.ok"))
                         .closeButtonText(Res.get("setting.preferences.dao.fullNodeInfo.cancel"))
@@ -924,6 +938,7 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
         userLanguageComboBox.setOnAction(null);
         userCountryComboBox.setOnAction(null);
         blockChainExplorerComboBox.setOnAction(null);
+        bsqBlockChainExplorerComboBox.setOnAction(null);
         deviationInputTextField.textProperty().removeListener(deviationListener);
         deviationInputTextField.focusedProperty().removeListener(deviationFocusedListener);
         transactionFeeInputTextField.focusedProperty().removeListener(transactionFeeFocusedListener);
@@ -941,11 +956,14 @@ public class PreferencesView extends ActivatableViewAndModel<GridPane, Preferenc
 
     private void deactivateDisplayPreferences() {
         useAnimations.setOnAction(null);
+        useDarkMode.setOnAction(null);
         // useStickyMarketPriceCheckBox.setOnAction(null);
         sortMarketCurrenciesNumerically.setOnAction(null);
         showOwnOffersInOfferBook.setOnAction(null);
         resetDontShowAgainButton.setOnAction(null);
-        avoidStandbyMode.setOnAction(null);
+        if (displayStandbyModeFeature) {
+            avoidStandbyMode.setOnAction(null);
+        }
     }
 
     private void deactivateDaoPreferences() {

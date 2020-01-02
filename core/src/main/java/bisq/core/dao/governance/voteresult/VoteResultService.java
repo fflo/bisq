@@ -93,7 +93,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Calculates the result of the voting at the VoteResult period.
- * We  take all data from the bitcoin domain and additionally the blindVote list which we received from the p2p network.
+ * We take all data from the bitcoin domain and additionally the blindVote list which we received from the p2p network.
  * Due to eventual consistency we use the hash of the data view of the voters (majority by merit+stake). If our local
  * blindVote list contains the blindVotes used by the voters we can calculate the result, otherwise we need to request
  * the missing blindVotes from the network.
@@ -411,7 +411,7 @@ public class VoteResultService implements DaoStateListener, DaoSetupService {
         if (!missingBallots.isEmpty())
             throw new VoteResultException.MissingBallotException(ballots, missingBallots);
 
-        // If we received a proposal after we had already voted we consider it as an proposal withhold attack and
+        // If we received a proposal after we had already voted we consider it as a proposal withhold attack and
         // treat the proposal as it was voted with a rejected vote.
         ballotByTxIdMap.entrySet().stream()
                 .filter(e -> !voteByTxIdMap.keySet().contains(e.getKey()))
@@ -559,7 +559,9 @@ public class VoteResultService implements DaoStateListener, DaoSetupService {
         evaluatedProposals.forEach(evaluatedProposal -> evaluatedProposalsByTxIdMap.put(evaluatedProposal.getProposalTxId(), evaluatedProposal));
 
         // Proposals which did not get any vote need to be set as failed.
+        // TODO We should not use proposalListPresentation here
         proposalListPresentation.getActiveOrMyUnconfirmedProposals().stream()
+                .filter(proposal -> periodService.isTxInCorrectCycle(proposal.getTxId(), chainHeight))
                 .filter(proposal -> !evaluatedProposalsByTxIdMap.containsKey(proposal.getTxId()))
                 .forEach(proposal -> {
                     ProposalVoteResult proposalVoteResult = new ProposalVoteResult(proposal, 0,

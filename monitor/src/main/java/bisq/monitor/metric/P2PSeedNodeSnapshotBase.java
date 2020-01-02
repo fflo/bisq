@@ -39,6 +39,8 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.SettableFuture;
 
+import java.time.Clock;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,12 +60,12 @@ import org.jetbrains.annotations.NotNull;
  *
  */
 @Slf4j
-abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageListener {
+public abstract class P2PSeedNodeSnapshotBase extends Metric implements MessageListener {
 
     private static final String HOSTS = "run.hosts";
     private static final String TOR_PROXY_PORT = "run.torProxyPort";
     Statistics statistics;
-    final Map<NodeAddress, Statistics> bucketsPerHost = new ConcurrentHashMap<>();
+    final Map<NodeAddress, Statistics<?>> bucketsPerHost = new ConcurrentHashMap<>();
     private final ThreadGate gate = new ThreadGate();
 
     /**
@@ -90,7 +92,7 @@ abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageL
     protected void execute() {
         // start the network node
         final NetworkNode networkNode = new TorNetworkNode(Integer.parseInt(configuration.getProperty(TOR_PROXY_PORT, "9054")),
-                new CoreNetworkProtoResolver(), false,
+                new CoreNetworkProtoResolver(Clock.systemDefaultZone()), false,
                 new AvailableTor(Monitor.TOR_WORKING_DIR, "unused"));
         // we do not need to start the networkNode, as we do not need the HS
         //networkNode.start(this);
@@ -103,7 +105,7 @@ abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageL
         report();
     }
 
-    abstract protected List<NetworkEnvelope> getRequests();
+    protected abstract List<NetworkEnvelope> getRequests();
 
     protected void send(NetworkNode networkNode, NetworkEnvelope message) {
 
@@ -118,12 +120,12 @@ abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageL
                 NodeAddress target = OnionParser.getNodeAddress(current);
 
                 // do the data request
+                aboutToSend(message);
                 SettableFuture<Connection> future = networkNode.sendMessage(target, message);
 
                 Futures.addCallback(future, new FutureCallback<>() {
                     @Override
                     public void onSuccess(Connection connection) {
-                        connection.removeMessageListener(P2PSeedNodeSnapshotBase.this);
                         connection.addMessageListener(P2PSeedNodeSnapshotBase.this);
                     }
 
@@ -131,8 +133,7 @@ abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageL
                     public void onFailure(@NotNull Throwable throwable) {
                         gate.proceed();
                         log.error(
-                                "Sending PreliminaryDataRequest failed. That is expected if the peer is offline.\n\tException="
-                                        + throwable.getMessage());
+                                "Sending {} failed. That is expected if the peer is offline.\n\tException={}", message.getClass().getSimpleName(), throwable.getMessage());
                     }
                 });
 
@@ -153,6 +154,8 @@ abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageL
         gate.await();
     }
 
+    protected void aboutToSend(NetworkEnvelope message) { };
+
     /**
      * Report all the stuff. Uses the configured reporter directly.
      */
@@ -168,7 +171,8 @@ abstract public class P2PSeedNodeSnapshotBase extends Metric implements MessageL
             log.warn("Got an unexpected message of type <{}>",
                     networkEnvelope.getClass().getSimpleName());
         }
+        connection.removeMessageListener(this);
     }
 
-    abstract protected boolean treatMessage(NetworkEnvelope networkEnvelope, Connection connection);
+    protected abstract boolean treatMessage(NetworkEnvelope networkEnvelope, Connection connection);
 }

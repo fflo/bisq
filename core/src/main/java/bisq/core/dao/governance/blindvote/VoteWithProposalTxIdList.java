@@ -21,8 +21,6 @@ import bisq.core.dao.governance.ConsensusCritical;
 
 import bisq.common.proto.persistable.PersistableList;
 
-import io.bisq.generated.protobuffer.PB;
-
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.util.ArrayList;
@@ -34,8 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * We don't persist that list but use it only for encoding the VoteWithProposalTxId list
- * to PB bytes in the blindVote. The bytes gets encrypted and later decrypted. To use a ByteOutputStream
- * and add all list elements would work for encryption but for decrypting we don't know the length of an list entry
+ * to PB bytes in the blindVote. The bytes get encrypted and later decrypted. To use a ByteOutputStream
+ * and add all list elements would work for encryption but for decrypting we don't know the length of a list entry
  * and it would make the process complicate (e.g. require a custom serialisation format).
  */
 @Slf4j
@@ -52,22 +50,22 @@ public class VoteWithProposalTxIdList extends PersistableList<VoteWithProposalTx
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     public static VoteWithProposalTxIdList getVoteWithProposalTxIdListFromBytes(byte[] bytes) throws InvalidProtocolBufferException {
-        return VoteWithProposalTxIdList.fromProto(PB.VoteWithProposalTxIdList.parseFrom(bytes));
+        return VoteWithProposalTxIdList.fromProto(protobuf.VoteWithProposalTxIdList.parseFrom(bytes));
     }
 
     @Override
-    public PB.VoteWithProposalTxIdList toProtoMessage() {
+    public protobuf.VoteWithProposalTxIdList toProtoMessage() {
         return getBuilder().build();
     }
 
-    private PB.VoteWithProposalTxIdList.Builder getBuilder() {
-        return PB.VoteWithProposalTxIdList.newBuilder()
+    private protobuf.VoteWithProposalTxIdList.Builder getBuilder() {
+        return protobuf.VoteWithProposalTxIdList.newBuilder()
                 .addAllItem(getList().stream()
                         .map(VoteWithProposalTxId::toProtoMessage)
                         .collect(Collectors.toList()));
     }
 
-    private static VoteWithProposalTxIdList fromProto(PB.VoteWithProposalTxIdList proto) {
+    private static VoteWithProposalTxIdList fromProto(protobuf.VoteWithProposalTxIdList proto) {
         final ArrayList<VoteWithProposalTxId> list = proto.getItemList().stream()
                 .map(VoteWithProposalTxId::fromProto).collect(Collectors.toCollection(ArrayList::new));
         return new VoteWithProposalTxIdList(list);

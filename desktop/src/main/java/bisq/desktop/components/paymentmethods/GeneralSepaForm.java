@@ -3,14 +3,14 @@ package bisq.desktop.components.paymentmethods;
 import bisq.desktop.components.InputTextField;
 import bisq.desktop.util.FormBuilder;
 
+import bisq.core.account.witness.AccountAgeWitnessService;
 import bisq.core.locale.Country;
 import bisq.core.locale.CurrencyUtil;
 import bisq.core.locale.Res;
 import bisq.core.locale.TradeCurrency;
-import bisq.core.payment.AccountAgeWitnessService;
 import bisq.core.payment.CountryBasedPaymentAccount;
 import bisq.core.payment.PaymentAccount;
-import bisq.core.util.BSFormatter;
+import bisq.core.util.coin.CoinFormatter;
 import bisq.core.util.validation.InputValidator;
 
 import org.apache.commons.lang3.StringUtils;
@@ -45,7 +45,7 @@ public abstract class GeneralSepaForm extends PaymentMethodForm {
     private ComboBox<TradeCurrency> currencyComboBox;
     InputTextField ibanInputTextField;
 
-    GeneralSepaForm(PaymentAccount paymentAccount, AccountAgeWitnessService accountAgeWitnessService, InputValidator inputValidator, GridPane gridPane, int gridRow, BSFormatter formatter) {
+    GeneralSepaForm(PaymentAccount paymentAccount, AccountAgeWitnessService accountAgeWitnessService, InputValidator inputValidator, GridPane gridPane, int gridRow, CoinFormatter formatter) {
         super(paymentAccount, accountAgeWitnessService, inputValidator, gridPane, gridRow, formatter);
     }
 

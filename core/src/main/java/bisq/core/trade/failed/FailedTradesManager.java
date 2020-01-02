@@ -25,16 +25,11 @@ import bisq.core.trade.Trade;
 
 import bisq.common.crypto.KeyRing;
 import bisq.common.proto.persistable.PersistedDataHost;
-import bisq.common.proto.persistable.PersistenceProtoResolver;
 import bisq.common.storage.Storage;
 
 import com.google.inject.Inject;
 
-import javax.inject.Named;
-
 import javafx.collections.ObservableList;
-
-import java.io.File;
 
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -51,30 +46,33 @@ public class FailedTradesManager implements PersistedDataHost {
     private final Storage<TradableList<Trade>> tradableListStorage;
 
     @Inject
-    public FailedTradesManager(KeyRing keyRing, PriceFeedService priceFeedService,
-                               PersistenceProtoResolver persistenceProtoResolver,
+    public FailedTradesManager(KeyRing keyRing,
+                               PriceFeedService priceFeedService,
                                BtcWalletService btcWalletService,
-                               @Named(Storage.STORAGE_DIR) File storageDir) {
+                               Storage<TradableList<Trade>> storage) {
         this.keyRing = keyRing;
         this.priceFeedService = priceFeedService;
         this.btcWalletService = btcWalletService;
-        tradableListStorage = new Storage<>(storageDir, persistenceProtoResolver);
+        tradableListStorage = storage;
 
     }
 
     @Override
     public void readPersisted() {
         this.failedTrades = new TradableList<>(tradableListStorage, "FailedTrades");
-        failedTrades.forEach(e -> e.getOffer().setPriceFeedService(priceFeedService));
         failedTrades.forEach(trade -> {
-            trade.getOffer().setPriceFeedService(priceFeedService);
+            if (trade.getOffer() != null) {
+                trade.getOffer().setPriceFeedService(priceFeedService);
+            }
+
             trade.setTransientFields(tradableListStorage, btcWalletService);
         });
     }
 
     public void add(Trade trade) {
-        if (!failedTrades.contains(trade))
+        if (!failedTrades.contains(trade)) {
             failedTrades.add(trade);
+        }
     }
 
     public boolean wasMyOffer(Offer offer) {
@@ -89,7 +87,7 @@ public class FailedTradesManager implements PersistedDataHost {
         return failedTrades.stream().filter(e -> e.getId().equals(id)).findFirst();
     }
 
-    public Stream<Trade> getLockedTradesStream() {
+    public Stream<Trade> getTradesStreamWithFundsLockedIn() {
         return failedTrades.stream()
                 .filter(Trade::isFundsLockedIn);
     }

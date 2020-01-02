@@ -25,8 +25,6 @@ import bisq.network.p2p.ExtendedDataSizePermission;
 import bisq.common.app.Version;
 import bisq.common.proto.network.NetworkEnvelope;
 
-import io.bisq.generated.protobuffer.PB;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -58,17 +56,19 @@ public final class GetBlocksResponse extends NetworkEnvelope implements DirectMe
     }
 
     @Override
-    public PB.NetworkEnvelope toProtoNetworkEnvelope() {
-        return getNetworkEnvelopeBuilder()
-                .setGetBlocksResponse(PB.GetBlocksResponse.newBuilder()
+    public protobuf.NetworkEnvelope toProtoNetworkEnvelope() {
+        protobuf.NetworkEnvelope proto = getNetworkEnvelopeBuilder()
+                .setGetBlocksResponse(protobuf.GetBlocksResponse.newBuilder()
                         .addAllRawBlocks(blocks.stream()
                                 .map(RawBlock::toProtoMessage)
                                 .collect(Collectors.toList()))
                         .setRequestNonce(requestNonce))
                 .build();
+        log.info("Sending a GetBlocksResponse with {} kB", proto.getSerializedSize() / 1000d);
+        return proto;
     }
 
-    public static NetworkEnvelope fromProto(PB.GetBlocksResponse proto, int messageVersion) {
+    public static NetworkEnvelope fromProto(protobuf.GetBlocksResponse proto, int messageVersion) {
         List<RawBlock> list = proto.getRawBlocksList().stream()
                 .map(RawBlock::fromProto)
                 .collect(Collectors.toList());

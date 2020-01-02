@@ -28,7 +28,7 @@ import bisq.core.dao.state.DaoStateService;
 import bisq.core.dao.state.model.governance.ChangeParamProposal;
 import bisq.core.dao.state.model.governance.Proposal;
 import bisq.core.locale.Res;
-import bisq.core.util.BsqFormatter;
+import bisq.core.util.coin.BsqFormatter;
 import bisq.core.util.validation.BtcAddressValidator;
 import bisq.core.util.validation.InputValidator;
 
@@ -63,9 +63,13 @@ public class ChangeParamValidator extends ProposalValidator implements Consensus
     public void validateDataFields(Proposal proposal) throws ProposalValidationException {
         try {
             super.validateDataFields(proposal);
-            ChangeParamProposal changeParamProposal = (ChangeParamProposal) proposal;
-            validateParamValue(changeParamProposal.getParam(), changeParamProposal.getParamValue(), getBlockHeight(proposal));
-            checkArgument(changeParamProposal.getParamValue().length() <= 200, "ParamValue must not exceed 200 chars");
+
+            // Only once parsing is complete we can check for param changes
+            if (daoStateService.isParseBlockChainComplete()) {
+                ChangeParamProposal changeParamProposal = (ChangeParamProposal) proposal;
+                validateParamValue(changeParamProposal.getParam(), changeParamProposal.getParamValue(), getBlockHeight(proposal));
+                checkArgument(changeParamProposal.getParamValue().length() <= 200, "ParamValue must not exceed 200 chars");
+            }
         } catch (ProposalValidationException e) {
             throw e;
         } catch (Throwable throwable) {

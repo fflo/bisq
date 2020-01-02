@@ -19,9 +19,11 @@ All Bisq contributors submit changes via pull requests. The workflow is as follo
  - Fork the repository
  - Create a topic branch from the `master` branch
  - Commit patches
+ - Squash redundant or unnecessary commits
  - Submit a pull request from your topic branch back to the `master` branch of the main repository
+ - Make changes to the pull request if reviewers request them and __**request a re-review**__
 
-Pull requests should be focused on a single change. Do not mix, for example, refactorings with a bug fix or implementation of a new feature. This practice makes it easier for fellow contributors to review each pull request on its merits and and to give a clear ACK/NACK (see below).
+Pull requests should be focused on a single change. Do not mix, for example, refactorings with a bug fix or implementation of a new feature. This practice makes it easier for fellow contributors to review each pull request on its merits and to give a clear ACK/NACK (see below).
 
 
 ## Reviewing Pull Requests
@@ -35,6 +37,8 @@ Anyone may participate in peer review which is expressed by comments in the pull
  - `utACK` means "I have not tested the code, but I have reviewed it and it looks OK, I agree it can be merged";
  - `Concept ACK` means "I agree in the general principle of this pull request";
  - `Nit` refers to trivial, often non-blocking issues.
+
+Please note that Pull Requests marked `NACK` and/or GitHub's `Change requested` are closed after 30 days if not addressed.
 
 
 ## Compensation
@@ -64,14 +68,16 @@ See also [bisq-network/style#9](https://github.com/bisq-network/style/issues/9).
 
 ### Sign your commits with GPG
 
-_Not strictly required, but recommended for those who commit frequently._
-
 See https://github.com/blog/2144-gpg-signature-verification for background and
 https://help.github.com/articles/signing-commits-with-gpg/ for instructions.
 
 ### Use an editor that supports Editorconfig
 
 The [.editorconfig](.editorconfig) settings in this repository ensure consistent management of whitespace, line endings and more. Most modern editors support it natively or with plugin. See http://editorconfig.org for details. See also [bisq-network/style#10](https://github.com/bisq-network/style/issues/10).
+
+### Keep the git history clean
+
+It's very important to keep the git history clear, light and easily browsable. This means contributors must make sure their pull requests include only meaningful commits (if they are redundant or were added after a review, they should be removed) and _no merge commits_.
 
 ### Additional style guidelines
 

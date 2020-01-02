@@ -21,19 +21,24 @@ import bisq.desktop.components.AutoTooltipCheckBox;
 import bisq.desktop.components.InfoTextField;
 import bisq.desktop.components.InputTextField;
 import bisq.desktop.main.overlays.popups.Popup;
+import bisq.desktop.util.DisplayUtils;
 import bisq.desktop.util.FormBuilder;
+import bisq.desktop.util.GUIUtil;
 import bisq.desktop.util.Layout;
 
+import bisq.core.account.witness.AccountAgeWitness;
+import bisq.core.account.witness.AccountAgeWitnessService;
 import bisq.core.locale.Country;
 import bisq.core.locale.CurrencyUtil;
 import bisq.core.locale.FiatCurrency;
 import bisq.core.locale.Res;
 import bisq.core.locale.TradeCurrency;
 import bisq.core.offer.Offer;
-import bisq.core.payment.AccountAgeWitnessService;
+import bisq.core.offer.OfferPayload;
 import bisq.core.payment.AssetAccount;
 import bisq.core.payment.PaymentAccount;
-import bisq.core.util.BSFormatter;
+import bisq.core.payment.payload.PaymentMethod;
+import bisq.core.util.coin.CoinFormatter;
 import bisq.core.util.validation.InputValidator;
 
 import bisq.common.util.Tuple3;
@@ -42,6 +47,8 @@ import bisq.common.util.Utilities;
 import org.bitcoinj.core.Coin;
 
 import org.apache.commons.lang3.StringUtils;
+
+import de.jensd.fx.glyphs.materialdesignicons.MaterialDesignIcon;
 
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -59,7 +66,9 @@ import javafx.collections.FXCollections;
 
 import javafx.util.StringConverter;
 
+import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -72,7 +81,7 @@ public abstract class PaymentMethodForm {
     protected final InputValidator inputValidator;
     protected final GridPane gridPane;
     protected int gridRow;
-    private final BSFormatter formatter;
+    private final CoinFormatter formatter;
     protected final BooleanProperty allInputsValid = new SimpleBooleanProperty();
 
     protected int gridRowFrom;
@@ -81,7 +90,7 @@ public abstract class PaymentMethodForm {
     protected ComboBox<TradeCurrency> currencyComboBox;
 
     public PaymentMethodForm(PaymentAccount paymentAccount, AccountAgeWitnessService accountAgeWitnessService,
-                             InputValidator inputValidator, GridPane gridPane, int gridRow, BSFormatter formatter) {
+                             InputValidator inputValidator, GridPane gridPane, int gridRow, CoinFormatter formatter) {
         this.paymentAccount = paymentAccount;
         this.accountAgeWitnessService = accountAgeWitnessService;
         this.inputValidator = inputValidator;
@@ -167,7 +176,7 @@ public abstract class PaymentMethodForm {
             tradeCurrency = paymentAccount.getTradeCurrencies().get(0);
         else
             tradeCurrency = paymentAccount instanceof AssetAccount ?
-                    CurrencyUtil.getAllSortedCryptoCurrencies().get(0) :
+                    CurrencyUtil.getAllSortedCryptoCurrencies().iterator().next() :
                     CurrencyUtil.getDefaultTradeCurrency();
 
 
@@ -177,45 +186,85 @@ public abstract class PaymentMethodForm {
         final String limitationsText = paymentAccount instanceof AssetAccount ?
                 Res.get("payment.maxPeriodAndLimitCrypto",
                         getTimeText(hours),
-                        formatter.formatCoinWithCode(Coin.valueOf(accountAgeWitnessService.getMyTradeLimit(paymentAccount, tradeCurrency.getCode()))))
+                        formatter.formatCoinWithCode(Coin.valueOf(accountAgeWitnessService.getMyTradeLimit(
+                                paymentAccount, tradeCurrency.getCode(), OfferPayload.Direction.BUY))))
                 :
                 Res.get("payment.maxPeriodAndLimit",
                         getTimeText(hours),
-                        formatter.formatCoinWithCode(Coin.valueOf(accountAgeWitnessService.getMyTradeLimit(paymentAccount, tradeCurrency.getCode()))),
-                        formatter.formatAccountAge(accountAge));
+                        formatter.formatCoinWithCode(Coin.valueOf(accountAgeWitnessService.getMyTradeLimit(
+                                paymentAccount, tradeCurrency.getCode(), OfferPayload.Direction.BUY))),
+                        formatter.formatCoinWithCode(Coin.valueOf(accountAgeWitnessService.getMyTradeLimit(
+                                paymentAccount, tradeCurrency.getCode(), OfferPayload.Direction.SELL))),
+                        DisplayUtils.formatAccountAge(accountAge));
 
-        if (isDisplayForm)
+        if (isDisplayForm) {
             addCompactTopLabelTextField(gridPane, ++gridRow, Res.get("payment.limitations"), limitationsText);
-        else
+
+            String accountSigningStateText;
+            MaterialDesignIcon icon;
+
+            boolean needsSigning = PaymentMethod.hasChargebackRisk(paymentAccount.getPaymentMethod(),
+                    paymentAccount.getTradeCurrencies());
+
+            if (needsSigning) {
+
+                AccountAgeWitness myWitness = accountAgeWitnessService.getMyWitness(
+                        paymentAccount.paymentAccountPayload);
+                AccountAgeWitnessService.SignState signState =
+                        accountAgeWitnessService.getSignState(myWitness);
+
+                accountSigningStateText = StringUtils.capitalize(signState.getPresentation());
+
+                long daysSinceSigning = TimeUnit.MILLISECONDS.toDays(
+                        accountAgeWitnessService.getWitnessSignAge(myWitness, new Date()));
+                String timeSinceSigning = Res.get("offerbook.timeSinceSigning.daysSinceSigning.long",
+                        Res.get("offerbook.timeSinceSigning.daysSinceSigning",
+                                daysSinceSigning));
+
+                if (!signState.equals(AccountAgeWitnessService.SignState.UNSIGNED)) {
+                    accountSigningStateText += " / " + timeSinceSigning;
+                }
+
+                icon = GUIUtil.getIconForSignState(signState);
+
+                InfoTextField accountSigningField = addCompactTopLabelInfoTextField(gridPane, ++gridRow, Res.get("shared.accountSigningState"),
+                        accountSigningStateText).second;
+                //TODO: add additional information regarding account signing
+                accountSigningField.setContent(icon, accountSigningStateText, "", 0.4);
+            }
+
+        } else
             addTopLabelTextField(gridPane, ++gridRow, Res.get("payment.limitations"), limitationsText);
 
-        if (isAddAccountScreen) {
-            InputTextField inputTextField = addInputTextField(gridPane, ++gridRow, Res.get("payment.salt"), 0);
-            inputTextField.setText(Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt()));
-            inputTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-                if (!newValue.isEmpty()) {
-                    try {
-                        // test if input is hex
-                        Utilities.decodeFromHex(newValue);
+        if (!(paymentAccount instanceof AssetAccount)) {
+            if (isAddAccountScreen) {
+                InputTextField inputTextField = addInputTextField(gridPane, ++gridRow, Res.get("payment.salt"), 0);
+                inputTextField.setText(Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt()));
+                inputTextField.textProperty().addListener((observable, oldValue, newValue) -> {
+                    if (!newValue.isEmpty()) {
+                        try {
+                            // test if input is hex
+                            Utilities.decodeFromHex(newValue);
 
-                        paymentAccount.setSaltAsHex(newValue);
-                    } catch (Throwable t) {
-                        new Popup().warning(Res.get("payment.error.noHexSalt")).show();
-                        inputTextField.setText(Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt()));
-                        log.warn(t.toString());
+                            paymentAccount.setSaltAsHex(newValue);
+                        } catch (Throwable t) {
+                            new Popup().warning(Res.get("payment.error.noHexSalt")).show();
+                            inputTextField.setText(Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt()));
+                            log.warn(t.toString());
+                        }
                     }
-                }
-            });
-        } else {
-            addCompactTopLabelTextFieldWithCopyIcon(gridPane, ++gridRow, Res.get("payment.salt",
-                    Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt())),
-                    Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt()));
+                });
+            } else {
+                addCompactTopLabelTextFieldWithCopyIcon(gridPane, ++gridRow, Res.get("payment.salt",
+                        Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt())),
+                        Utilities.bytesAsHexString(paymentAccount.getPaymentAccountPayload().getSalt()));
+            }
         }
     }
 
     void applyTradeCurrency(TradeCurrency tradeCurrency, FiatCurrency defaultCurrency) {
         if (!defaultCurrency.equals(tradeCurrency)) {
-            new Popup<>().warning(Res.get("payment.foreign.currency"))
+            new Popup().warning(Res.get("payment.foreign.currency"))
                     .actionButtonText(Res.get("shared.yes"))
                     .onAction(() -> {
                         paymentAccount.setSingleTradeCurrency(tradeCurrency);
@@ -232,6 +281,7 @@ public abstract class PaymentMethodForm {
 
     void setAccountNameWithString(String name) {
         if (useCustomAccountNameToggleButton != null && !useCustomAccountNameToggleButton.isSelected()) {
+            name = name.trim();
             name = StringUtils.abbreviate(name, 9);
             String method = Res.get(paymentAccount.getPaymentMethod().getId());
             accountNameTextField.setText(method.concat(": ").concat(name));
@@ -278,11 +328,11 @@ public abstract class PaymentMethodForm {
         flowPane.getChildren().add(checkBox);
     }
 
-    abstract protected void autoFillNameTextField();
+    protected abstract void autoFillNameTextField();
 
-    abstract public void addFormForAddAccount();
+    public abstract void addFormForAddAccount();
 
-    abstract public void addFormForDisplayAccount();
+    public abstract void addFormForDisplayAccount();
 
     protected abstract void updateAllInputsValid();
 
