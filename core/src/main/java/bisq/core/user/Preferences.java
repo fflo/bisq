@@ -82,7 +82,8 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
     private static final ArrayList<BlockChainExplorer> BTC_MAIN_NET_EXPLORERS = new ArrayList<>(Arrays.asList(
             new BlockChainExplorer("Blockstream.info", "https://blockstream.info/tx/", "https://blockstream.info/address/"),
             new BlockChainExplorer("Blockstream.info Tor V3", "http://explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion/tx/", "http://explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion/address/"),
-            new BlockChainExplorer("Blockstream.info + Mempool.space", "https://mempool.space/tx/", "https://blockstream.info/address/"),
+            new BlockChainExplorer("mempool.space", "https://mempool.space/tx/", "https://mempool.space/explorer/address/"),
+            new BlockChainExplorer("mempool.space Tor V2", "http://mempooltxrqf4re5.onion/tx/", "http://mempooltxrqf4re5.onion/explorer/address/"),
             new BlockChainExplorer("OXT", "https://oxt.me/transaction/", "https://oxt.me/address/"),
             new BlockChainExplorer("Bitaps", "https://bitaps.com/", "https://bitaps.com/"),
             new BlockChainExplorer("Blockcypher", "https://live.blockcypher.com/btc/tx/", "https://live.blockcypher.com/btc/address/"),
@@ -109,8 +110,11 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
     ));
 
     public static final ArrayList<BlockChainExplorer> BSQ_MAIN_NET_EXPLORERS = new ArrayList<>(Arrays.asList(
-            new BlockChainExplorer("bsq.wiz.biz (@wiz)", "https://bsq.wiz.biz/tx.html?tx=", "https://bsq.wiz.biz/Address.html?addr="),
-            new BlockChainExplorer("explorer.sqrrm.net (@sqrrm)", "https://explorer.sqrrm.net/tx.html?tx=", "https://explorer.sqrrm.net/Address.html?addr=")
+            new BlockChainExplorer("bsq.ninja (@wiz)", "https://bsq.ninja/tx.html?tx=", "https://bsq.ninja/Address.html?addr="),
+            new BlockChainExplorer("bsq.sqrrm.net (@sqrrm)", "https://bsq.sqrrm.net/tx.html?tx=", "https://bsq.sqrrm.net/Address.html?addr="),
+            new BlockChainExplorer("bsq.bisq.services (@devinbileck)", "https://bsq.bisq.services/tx.html?tx=", "https://bsq.bisq.services/Address.html?addr="),
+            new BlockChainExplorer("bsq.vante.me (@mrosseel)", "https://bsq.vante.me/tx.html?tx=", "https://bsq.vante.me/Address.html?addr="),
+            new BlockChainExplorer("bsq.emzy.de (@emzy)", "https://bsq.emzy.de/tx.html?tx=", "https://bsq.emzy.de/Address.html?addr=")
     ));
 
     // payload is initialized so the default values are available for Property initialization.
@@ -251,10 +255,14 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
         useStandbyModeProperty.set(prefPayload.isUseStandbyMode());
         cssThemeProperty.set(prefPayload.getCssTheme());
 
-        // if no valid block explorer is set, randomly select a valid BSQ block explorer
+        // if no valid Bitcoin block explorer is set, select the 1st valid Bitcoin block explorer
+        ArrayList<BlockChainExplorer> btcExplorers = getBlockChainExplorers();
+        if (!blockExplorerExists(btcExplorers, getBlockChainExplorer()))
+            setBlockChainExplorer(btcExplorers.get(0));
+
+        // if no valid BSQ block explorer is set, randomly select a valid BSQ block explorer
         ArrayList<BlockChainExplorer> bsqExplorers = getBsqBlockChainExplorers();
-        BlockChainExplorer bsqExplorer = getBsqBlockChainExplorer();
-        if (bsqExplorer == null || bsqExplorers.contains(bsqExplorer) == false)
+        if (!blockExplorerExists(bsqExplorers, getBsqBlockChainExplorer()))
             setBsqBlockChainExplorer(bsqExplorers.get((new Random()).nextInt(bsqExplorers.size())));
 
         tradeCurrenciesAsObservable.addAll(prefPayload.getFiatCurrencies());
@@ -817,6 +825,16 @@ public final class Preferences implements PersistedDataHost, BridgeAddressProvid
             tradeCurrenciesAsObservable.add(change.getAddedSubList().get(0));
         else if (change.wasRemoved() && change.getRemovedSize() == 1 && initialReadDone)
             tradeCurrenciesAsObservable.remove(change.getRemoved().get(0));
+    }
+
+    private boolean blockExplorerExists(ArrayList<BlockChainExplorer> explorers,
+                                              BlockChainExplorer explorer)
+    {
+        if (explorer != null && explorers != null && explorers.size() > 0)
+            for (int i = 0; i < explorers.size(); i++)
+                if (explorers.get(i).name.equals(explorer.name))
+                    return true;
+        return false;
     }
 
     private interface ExcludesDelegateMethods {
